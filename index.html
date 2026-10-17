@@ -180,7 +180,7 @@
     .result .primary { width: 100%; font-size: 14px; padding: 13px; }
     .result-share { margin-bottom: 18px; }
     .result .copy-result { background: var(--soft); color: var(--ink); border: 1px solid var(--border); }
-    .result .copy-result:hover { background: var(--border); transform: none; }
+    .result .copy-result:not(:disabled):hover { background: var(--border); transform: none; }
     .result .copy-result[aria-disabled="true"] { cursor: wait; }
     .copy-status { min-height: 1.6em; margin: 10px 0 0; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
     .manual-copy { margin-top: 12px; text-align: left; }
