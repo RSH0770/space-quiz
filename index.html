@@ -178,6 +178,18 @@
     .result-stats b { display: block; font-size: 20px; }
     .result-stats small { color: var(--muted); font-size: 11px; }
     .result .primary { width: 100%; font-size: 14px; padding: 13px; }
+    .result-share { margin-bottom: 18px; }
+    .result .copy-result { background: var(--soft); color: var(--ink); border: 1px solid var(--border); }
+    .result .copy-result:hover { background: var(--border); transform: none; }
+    .result .copy-result[aria-disabled="true"] { cursor: wait; }
+    .copy-status { min-height: 1.6em; margin: 10px 0 0; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
+    .manual-copy { margin-top: 12px; text-align: left; }
+    .manual-copy label { display: block; font-size: 12px; font-weight: 650; margin-bottom: 6px; }
+    .manual-copy textarea {
+      display: block; width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; resize: vertical;
+    }
+    .manual-copy textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
     .confetti { position: absolute; width: 6px; height: 11px; top: -15px; pointer-events: none; animation: confetti 2.5s ease-in forwards; }
     @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
     @keyframes twinkle { from { opacity: .4; } to { opacity: 1; } }
@@ -291,6 +303,14 @@
           <div><b id="wrong-count"></b><small>놓친 질문</small></div>
           <div><b id="accuracy"></b><small>정답률</small></div>
         </div>
+        <div class="result-share">
+          <button class="primary copy-result" id="copy-result" type="button">결과 복사</button>
+          <p class="copy-status" id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div class="manual-copy" id="manual-copy" hidden>
+            <label for="share-text">직접 복사할 공유 문구</label>
+            <textarea id="share-text" rows="5" readonly aria-describedby="copy-status"></textarea>
+          </div>
+        </div>
         <button class="primary" id="restart">다시 탐험하기 <span aria-hidden="true">↗</span></button>
       </div>
       <p class="under-card"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5.5 11h5M6 13h4M5 8.5a4 4 0 1 1 6 0c-.8.6-1 1-1 2H6c0-1-.2-1.4-1-2Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>서두르지 않아도 괜찮아요. 우주는 기다려주니까요.</p>
@@ -315,6 +335,7 @@
     let current = 0;
     let score = 0;
     let answered = false;
+    let copyVersion = 0;
 
     function updateProgress(completed) {
       $("progress-text").textContent = `${completed} / ${questions.length} 완료`;
@@ -381,7 +402,54 @@
       $("next").focus({ preventScroll: true });
     }
 
+    function resetResultSharing() {
+      copyVersion++;
+      $("copy-result").removeAttribute("aria-disabled");
+      $("copy-result").textContent = "결과 복사";
+      $("copy-status").textContent = "";
+      $("manual-copy").hidden = true;
+      $("share-text").value = "";
+    }
+
+    function showManualCopy(reason) {
+      $("copy-status").textContent = `${reason} 아래 공유 문구를 직접 선택해 복사해주세요.`;
+      $("manual-copy").hidden = false;
+      $("share-text").focus();
+      $("share-text").select();
+    }
+
+    async function copyResult() {
+      if ($("result").hidden || $("copy-result").getAttribute("aria-disabled") === "true") return;
+      const version = copyVersion;
+      $("copy-result").setAttribute("aria-disabled", "true");
+      $("copy-result").textContent = "복사 중…";
+      $("copy-status").textContent = "결과를 복사하고 있어요.";
+      try {
+        if (typeof navigator.clipboard?.writeText !== "function") {
+          showManualCopy("이 브라우저에서는 자동 복사를 지원하지 않아요.");
+          return;
+        }
+        await navigator.clipboard.writeText($("share-text").value);
+        if (version !== copyVersion) return;
+        $("copy-status").textContent = "결과를 클립보드에 복사했어요.";
+        if (document.activeElement === $("share-text")) $("copy-result").focus({ preventScroll: true });
+        $("manual-copy").hidden = true;
+      } catch (error) {
+        if (version !== copyVersion) return;
+        const reason = error?.name === "NotAllowedError" || error?.name === "SecurityError"
+          ? "브라우저의 권한 또는 보안 설정으로 자동 복사가 허용되지 않았어요."
+          : "클립보드에 쓰지 못해 자동 복사를 완료하지 못했어요.";
+        showManualCopy(reason);
+      } finally {
+        if (version === copyVersion) {
+          $("copy-result").removeAttribute("aria-disabled");
+          $("copy-result").textContent = "결과 복사";
+        }
+      }
+    }
+
     function showResults() {
+      resetResultSharing();
       $("quiz-card").hidden = true;
       $("result").hidden = false;
       const reaction = score === 100
@@ -398,6 +466,7 @@
       $("correct-count").textContent = `${score / 10}개`;
       $("wrong-count").textContent = `${10 - score / 10}개`;
       $("accuracy").textContent = `${score}%`;
+      $("share-text").value = `궤도 — 우주 탐험 퀴즈\n${reaction[0]} ${reaction[1]}\n점수 ${score}/100 · 정답 ${score / 10}/${questions.length}`;
       if (score >= 70 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         for (let i = 0; i < 24; i++) {
           const piece = document.createElement("i");
@@ -421,7 +490,9 @@
         renderQuestion(true);
       }
     });
+    $("copy-result").addEventListener("click", copyResult);
     $("restart").addEventListener("click", () => {
+      resetResultSharing();
       current = 0;
       score = 0;
       $("result").hidden = true;
