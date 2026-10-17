@@ -178,6 +178,18 @@
     .result-stats b { display: block; font-size: 20px; }
     .result-stats small { color: var(--muted); font-size: 11px; }
     .result .primary { width: 100%; font-size: 14px; padding: 13px; }
+    .result-review { margin-bottom: 26px; text-align: left; overflow-wrap: anywhere; }
+    .result-review h3 { margin: 0 0 10px; font-size: 16px; }
+    .result-review summary { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+    .result-review summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .review-list { list-style: none; margin: 14px 0 0; padding: 0; }
+    .review-list li { padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .review-list h4 { margin: 0 0 10px; font-size: 15px; }
+    .review-list p { margin: 6px 0; font-size: 14px; }
+    .review-selected { color: var(--wrong); }
+    .review-correct { color: var(--correct); }
+    .review-explanation { padding: 10px 12px; background: var(--soft); border-radius: 8px; }
+    .review-perfect { margin: 0; color: var(--correct); }
     .result-share { margin-bottom: 18px; }
     .result .copy-result { background: var(--soft); color: var(--ink); border: 1px solid var(--border); }
     .result .copy-result:not(:disabled):hover { background: var(--border); transform: none; }
@@ -303,6 +315,14 @@
           <div><b id="wrong-count"></b><small>놓친 질문</small></div>
           <div><b id="accuracy"></b><small>정답률</small></div>
         </div>
+        <section class="result-review" aria-labelledby="review-title">
+          <h3 id="review-title">틀린 문제 복습 · <span id="review-count">0개</span></h3>
+          <p class="review-perfect" id="review-perfect" hidden>모든 문제를 맞혔어요!</p>
+          <details id="review-details" hidden>
+            <summary>오답 목록 보기</summary>
+            <ol class="review-list" id="review-list" role="list"></ol>
+          </details>
+        </section>
         <div class="result-share">
           <button class="primary copy-result" id="copy-result" type="button">결과 복사</button>
           <p class="copy-status" id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -335,6 +355,7 @@
     let current = 0;
     let score = 0;
     let answered = false;
+    const selectedAnswers = Array(questions.length).fill(null);
     let copyVersion = 0;
 
     function updateProgress(completed) {
@@ -374,6 +395,7 @@
     function selectAnswer(index) {
       if (answered) return;
       answered = true;
+      selectedAnswers[current] = index;
       const item = questions[current];
       const correct = index === item.correct;
       if (correct) score += 10;
@@ -400,6 +422,41 @@
       $("next").disabled = false;
       updateProgress(current + 1);
       $("next").focus({ preventScroll: true });
+    }
+
+    function resetAnswerReview() {
+      $("review-details").open = false;
+      $("review-details").hidden = true;
+      $("review-perfect").hidden = true;
+      $("review-count").textContent = "0개";
+      $("review-list").replaceChildren();
+    }
+
+    function renderAnswerReview() {
+      resetAnswerReview();
+      const entries = [];
+      questions.forEach((item, index) => {
+        const selected = selectedAnswers[index];
+        if (selected === null || selected === item.correct) return;
+        const entry = document.createElement("li");
+        const heading = document.createElement("h4");
+        heading.textContent = `${index + 1}번. ${item.question}`;
+        const chosenAnswer = document.createElement("p");
+        chosenAnswer.className = "review-selected";
+        chosenAnswer.textContent = `내가 선택한 답: ${item.options[selected]}`;
+        const correctAnswer = document.createElement("p");
+        correctAnswer.className = "review-correct";
+        correctAnswer.textContent = `정답: ${item.options[item.correct]}`;
+        const explanation = document.createElement("p");
+        explanation.className = "review-explanation";
+        explanation.textContent = `해설: ${item.explanation}`;
+        entry.append(heading, chosenAnswer, correctAnswer, explanation);
+        entries.push(entry);
+      });
+      $("review-list").replaceChildren(...entries);
+      $("review-count").textContent = `${entries.length}개`;
+      $("review-perfect").hidden = entries.length !== 0;
+      $("review-details").hidden = entries.length === 0;
     }
 
     function resetResultSharing() {
@@ -466,6 +523,7 @@
       $("correct-count").textContent = `${score / 10}개`;
       $("wrong-count").textContent = `${10 - score / 10}개`;
       $("accuracy").textContent = `${score}%`;
+      renderAnswerReview();
       $("share-text").value = `궤도 — 우주 탐험 퀴즈\n${reaction[0]} ${reaction[1]}\n점수 ${score}/100 · 정답 ${score / 10}/${questions.length}`;
       if (score >= 70 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         for (let i = 0; i < 24; i++) {
@@ -495,6 +553,8 @@
       resetResultSharing();
       current = 0;
       score = 0;
+      selectedAnswers.fill(null);
+      resetAnswerReview();
       $("result").hidden = true;
       $("result").querySelectorAll(".confetti").forEach((piece) => piece.remove());
       $("quiz-card").hidden = false;
